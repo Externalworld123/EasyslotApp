@@ -1,0 +1,25 @@
+project_id = "nmaubhbpfmotptcwiovd"
+
+[functions.public-discover]
+verify_jwt = false
+
+[functions.public-booking]
+verify_jwt = false
+
+[functions.send-booking-confirmation]
+verify_jwt = false
+
+[functions.send-booking-reminder]
+verify_jwt = false
+
+[functions.public-api]
+verify_jwt = false
+
+[functions.sitemap]
+verify_jwt = false
+
+[functions.razorpay-create-order]
+verify_jwt = false
+
+[functions.razorpay-verify-payment]
+verify_jwt = false

@@ -1,0 +1,2 @@
+ALTER TABLE public.pricing_rules ADD COLUMN IF NOT EXISTS flat_price numeric;
+COMMENT ON COLUMN public.pricing_rules.flat_price IS 'Optional fixed hourly price override. When set, replaces base hourly_rate * price_multiplier for matching slots.';

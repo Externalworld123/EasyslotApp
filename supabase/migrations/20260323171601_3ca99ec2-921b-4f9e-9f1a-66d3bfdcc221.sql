@@ -1,0 +1,1 @@
+ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS reminder_sent boolean NOT NULL DEFAULT false;

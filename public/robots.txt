@@ -1,0 +1,49 @@
+# https://www.easyslot.co.in
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: *
+Allow: /
+Allow: /easyslot-booking
+Allow: /venue/
+Allow: /trainers
+Disallow: /dashboard
+Disallow: /login
+Disallow: /onboarding
+Disallow: /accept-invite
+Disallow: /my-bookings
+Disallow: /booking/
+Disallow: /booking-success/
+Disallow: /feedback/
+Disallow: /admin
+Disallow: /super-admin
+Disallow: /settings
+Disallow: /users
+Disallow: /organization
+Disallow: /payments
+Disallow: /payment-history
+Disallow: /sessions
+Disallow: /resources
+Disallow: /bookings
+Disallow: /customers
+Disallow: /reports
+Disallow: /analytics
+Disallow: /marshal
+Disallow: /approvals
+Disallow: /pricing
+Disallow: /expenses
+Disallow: /audit-log
+Disallow: /monthly-plans
+Disallow: /staff-booking
+Disallow: /playo-booking
+
+Sitemap: https://www.easyslot.co.in/sitemap.xml
