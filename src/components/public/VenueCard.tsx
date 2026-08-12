@@ -52,19 +52,7 @@ interface VenueCardProps {
   };
   onClick: () => void;
 }
-export default function VenueCard({ center }: { center: any }) {
-  return (
-    <img
-      src={getStorageImageUrl(center.image_url)}
-      alt={center.name}
-      onError={(e) => {
-        // Fallback to placeholder if network error or missing resource occurs
-        e.currentTarget.src = "/placeholder.png";
-      }}
-      className="w-full h-48 object-cover rounded-xl"
-    />
-  );
-}
+    
 export default function VenueCard({ center, onClick }: VenueCardProps) {
   const hasResources = center.resources.length > 0;
 
@@ -102,6 +90,18 @@ export default function VenueCard({ center, onClick }: VenueCardProps) {
       )}
     >
       {/* ── Top: Image (55%) ── */}
+
+      <img
+      src={getStorageImageUrl(center.image_url)}
+      alt={center.name}
+      onError={(e) => {
+        // Fallback to placeholder if network error or missing resource occurs
+        e.currentTarget.src = "/placeholder.png";
+      }}
+      className="w-full h-48 object-cover rounded-xl"
+    />
+  );
+}
       <div className="relative h-44 sm:h-52 overflow-hidden">
         <img
           src={heroImage}
