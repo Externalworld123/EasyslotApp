@@ -101,7 +101,7 @@ export default function VenueCard({ center, onClick }: VenueCardProps) {
       className="w-full h-48 object-cover rounded-xl"
     />
   );
-}
+
       <div className="relative h-44 sm:h-52 overflow-hidden">
         <img
           src={heroImage}
