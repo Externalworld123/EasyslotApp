@@ -11,19 +11,7 @@ import imgSwimming from "@/assets/sports/swimming.jpg";
 import imgDefault from "@/assets/sports/default.jpg";
 import { getStorageImageUrl } from "@/integrations/supabase/client";
 
-export default function VenueCard({ center }: { center: any }) {
-  return (
-    <img
-      src={getStorageImageUrl(center.image_url)}
-      alt={center.name}
-      onError={(e) => {
-        // Fallback to placeholder if network error or missing resource occurs
-        e.currentTarget.src = "/placeholder.png";
-      }}
-      className="w-full h-48 object-cover rounded-xl"
-    />
-  );
-}
+
 const SPORT_IMAGES: Record<string, string> = {
   badminton: imgBadminton,
   cricket: imgCricket,
@@ -64,7 +52,19 @@ interface VenueCardProps {
   };
   onClick: () => void;
 }
-
+export default function VenueCard({ center }: { center: any }) {
+  return (
+    <img
+      src={getStorageImageUrl(center.image_url)}
+      alt={center.name}
+      onError={(e) => {
+        // Fallback to placeholder if network error or missing resource occurs
+        e.currentTarget.src = "/placeholder.png";
+      }}
+      className="w-full h-48 object-cover rounded-xl"
+    />
+  );
+}
 export default function VenueCard({ center, onClick }: VenueCardProps) {
   const hasResources = center.resources.length > 0;
 
