@@ -1,94 +1,110 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// Dynamically match origin
-const origin = req.headers.get("origin") || "*";
-const corsHeaders = {
-  "Access-Control-Allow-Origin": origin,
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PUT, DELETE",
-};
-
 async function hmacSha256Hex(key: string, message: string): Promise<string> {
   const enc = new TextEncoder();
   const cryptoKey = await crypto.subtle.importKey(
-    "raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+    "raw",
+    enc.encode(key),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
   );
   const sig = await crypto.subtle.sign("HMAC", cryptoKey, enc.encode(message));
-  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 Deno.serve(async (req) => {
+  // 1. Dynamic CORS setup
+  const origin = req.headers.get("origin") || "*";
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PUT, DELETE",
+  };
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const {
-      center_id, resource_id, customer_name, customer_phone, start_time,
-      duration_minutes, payment_utr, payment_amount,
-      local_dow, local_start_minutes, local_duration_minutes,
-      razorpay_order_id, razorpay_payment_id, razorpay_signature, razorpay_amount,
+      center_id,
+      resource_id,
+      customer_name,
+      customer_phone,
+      start_time,
+      duration_minutes,
+      local_dow,
+      local_start_minutes,
+      local_duration_minutes,
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      razorpay_amount,
     } = await req.json();
 
-    // --- Mandatory Razorpay signature verification for public bookings ---
+    // 2. Razorpay Signature Verification
     const hasRzp = razorpay_order_id && razorpay_payment_id && razorpay_signature;
     if (!hasRzp) {
-      return new Response(JSON.stringify({ error: "Payment verification required. Please complete payment via Razorpay." }), {
-        status: 402,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Payment verification required. Please complete payment via Razorpay." }),
+        { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
+
     const RZP_SECRET = Deno.env.get("RAZORPAY_KEY_SECRET");
     if (!RZP_SECRET) {
-      return new Response(JSON.stringify({ error: "Payment provider not configured" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Payment provider secret key missing in Supabase secrets." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
+
     const expectedSig = await hmacSha256Hex(RZP_SECRET, `${razorpay_order_id}|${razorpay_payment_id}`);
     if (expectedSig !== razorpay_signature) {
-      console.error("[public-booking] Invalid Razorpay signature", { razorpay_order_id, razorpay_payment_id });
-      return new Response(JSON.stringify({ error: "Payment verification failed" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Payment signature verification failed." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
-    // Prevent reusing the same payment for multiple bookings
-    const supabaseEarly = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
-    const { data: existingPayment } = await supabaseEarly
+
+    // 3. Initialize Supabase Service Role Client
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    // Prevent payment reuse
+    const { data: existingPayment } = await supabase
       .from("public_payments")
       .select("id, session_id")
       .eq("utr_id", razorpay_payment_id)
       .maybeSingle();
+
     if (existingPayment) {
-      return new Response(JSON.stringify({ error: "This payment has already been used for a booking", session_id: existingPayment.session_id }), {
-        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "This payment has already been used for a booking", session_id: existingPayment.session_id }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     if (!center_id || !resource_id || !customer_name || !start_time || !customer_phone) {
-      return new Response(JSON.stringify({ error: "Missing required fields (name, phone, center, resource, time)" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Missing required fields (name, phone, center, resource, time)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    // Validate duration
     const dur = typeof duration_minutes === "number" && duration_minutes > 0 ? duration_minutes : 60;
     if (dur > 480) {
-      return new Response(JSON.stringify({ error: "Duration too long" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Booking duration cannot exceed 8 hours." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
-
-    // Verify center exists
+    // Verify center existence
     const { data: center } = await supabase
       .from("centers")
       .select("id")
@@ -97,13 +113,13 @@ Deno.serve(async (req) => {
       .single();
 
     if (!center) {
-      return new Response(JSON.stringify({ error: "Center not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Center not found or inactive" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    // --- Subscription validation: check if org can book ---
+    // Check organization booking eligibility
     const { data: centerOrg } = await supabase
       .from("centers")
       .select("organization_id")
@@ -116,13 +132,13 @@ Deno.serve(async (req) => {
       });
       if (canBook === false) {
         return new Response(
-          JSON.stringify({ error: "Bookings are currently unavailable for this venue. Please try again later." }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          JSON.stringify({ error: "Bookings are currently unavailable for this venue." }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
     }
 
-    // Fetch resource to compute pricing server-side
+    // Fetch resource details & rates
     const { data: resource, error: resErr } = await supabase
       .from("resources")
       .select("hourly_rate, capacity")
@@ -131,25 +147,24 @@ Deno.serve(async (req) => {
       .eq("is_active", true)
       .single();
 
-    // Fetch center UPI ID
+    if (resErr || !resource) {
+      return new Response(
+        JSON.stringify({ error: "Resource not found or inactive" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { data: centerUpi } = await supabase
       .from("centers")
       .select("upi_id, name")
       .eq("id", center_id)
       .single();
 
-    if (resErr || !resource) {
-      return new Response(JSON.stringify({ error: "Resource not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const resourceCapacity = Number(resource.capacity) || 1;
     const hourlyRate = Number(resource.hourly_rate) || 0;
-
-    // Compute base_amount with pricing rules if local context provided
     let base_amount = (dur / 60) * hourlyRate;
+
+    // Apply pricing rules if contextual time parameters exist
     const hasLocalCtx =
       typeof local_start_minutes === "number" &&
       typeof local_duration_minutes === "number" &&
@@ -205,19 +220,16 @@ Deno.serve(async (req) => {
         }
         base_amount = Math.round(total * 100) / 100;
       } catch (priceErr) {
-        console.error("[Pricing rules] Failed, falling back to base rate:", (priceErr as Error).message);
+        console.error("[Pricing rules] Error:", (priceErr as Error).message);
       }
     }
 
     const final_amount = base_amount;
-
     const qr_code = crypto.randomUUID();
-
-    // Compute scheduled_end_time from start_time + duration
     const startDate = new Date(start_time);
     const scheduledEndTime = new Date(startDate.getTime() + dur * 60000).toISOString();
 
-    // Get a staff user from this center to set as started_by (optional)
+    // Assign started_by user
     const { data: staffRole } = await supabase
       .from("user_roles")
       .select("user_id")
@@ -225,7 +237,6 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    // Fall back to the organization owner if no staff role exists
     let started_by = staffRole?.user_id;
     if (!started_by) {
       const { data: org } = await supabase
@@ -243,22 +254,22 @@ Deno.serve(async (req) => {
       }
     }
     if (!started_by) {
-      // Last resort: use any existing auth user so FK constraint is satisfied
       const { data: anyUser } = await supabase
         .from("profiles")
         .select("id")
         .limit(1)
-        .single();
+        .maybeSingle();
       started_by = anyUser?.id || null;
     }
+
     if (!started_by) {
-      return new Response(JSON.stringify({ error: "No valid user found to assign booking" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "No valid administrative user found to assign booking" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    // --- Capacity check for shared-capacity resources ---
+    // Shared capacity check
     if (resourceCapacity > 1) {
       const { count: currentCount, error: countError } = await supabase
         .from("sessions")
@@ -269,12 +280,7 @@ Deno.serve(async (req) => {
         .lt("start_time", scheduledEndTime)
         .gt("scheduled_end_time", start_time);
 
-      if (countError) {
-        return new Response(JSON.stringify({ error: countError.message }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+      if (countError) throw countError;
 
       if ((currentCount ?? 0) >= resourceCapacity) {
         return new Response(
@@ -283,32 +289,37 @@ Deno.serve(async (req) => {
             capacity: resourceCapacity,
             current: currentCount,
           }),
-          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
     }
 
-    const { data: session, error } = await supabase.from("sessions").insert({
-      center_id,
-      resource_id,
-      customer_name,
-      customer_phone: customer_phone || null,
-      start_time,
-      scheduled_end_time: scheduledEndTime,
-      duration_minutes: dur,
-      status: "scheduled",
-      started_by,
-      base_amount,
-      final_amount,
-      qr_code,
-    }).select("id, qr_code").single();
+    // Insert booking session
+    const { data: session, error } = await supabase
+      .from("sessions")
+      .insert({
+        center_id,
+        resource_id,
+        customer_name,
+        customer_phone: customer_phone || null,
+        start_time,
+        scheduled_end_time: scheduledEndTime,
+        duration_minutes: dur,
+        status: "scheduled",
+        started_by,
+        base_amount,
+        final_amount,
+        qr_code,
+        payment_status: "paid",
+      })
+      .select("id, qr_code")
+      .single();
 
     if (error) throw error;
 
-    // Upsert customer record using phone as the unique key
+    // Upsert customer record
     try {
       const cleanPhone = customer_phone.replace(/[^0-9]/g, "");
-      // Check if customer with this phone exists in this center
       const { data: existingCustomer } = await supabase
         .from("customers")
         .select("id, total_sessions, lifetime_value")
@@ -317,7 +328,6 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (existingCustomer) {
-        // Update existing customer: increment sessions and add to lifetime value
         await supabase
           .from("customers")
           .update({
@@ -327,23 +337,19 @@ Deno.serve(async (req) => {
           })
           .eq("id", existingCustomer.id);
       } else {
-        // Create new customer
-        await supabase
-          .from("customers")
-          .insert({
-            center_id,
-            name: customer_name,
-            phone: cleanPhone,
-            total_sessions: 1,
-            lifetime_value: final_amount,
-          });
+        await supabase.from("customers").insert({
+          center_id,
+          name: customer_name,
+          phone: cleanPhone,
+          total_sessions: 1,
+          lifetime_value: final_amount,
+        });
       }
     } catch (custErr) {
-      console.error("[Customer upsert] Error:", custErr.message);
-      // Don't fail the booking if customer upsert fails
+      console.error("[Customer upsert] Error:", (custErr as Error).message);
     }
 
-    // Record the verified Razorpay payment and mark session as paid
+    // Record verified payment
     try {
       await supabase.from("public_payments").insert({
         session_id: session.id,
@@ -357,38 +363,34 @@ Deno.serve(async (req) => {
         customer_phone: customer_phone || null,
         verified_at: new Date().toISOString(),
       });
-      await supabase.from("sessions").update({ payment_status: "paid" }).eq("id", session.id);
     } catch (payErr) {
       console.error("[Razorpay payment record] Error:", (payErr as Error).message);
     }
 
-
-    // Await WhatsApp confirmation so the runtime doesn't exit early
+    // Send confirmation
     try {
-      const fnUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/send-booking-confirmation`;
-      const confirmResp = await fetch(fnUrl, {
+      const fnUrl = `${supabaseUrl}/functions/v1/send-booking-confirmation`;
+      await fetch(fnUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          Authorization: `Bearer ${serviceRoleKey}`,
         },
         body: JSON.stringify({ session_id: session.id }),
       });
-      const confirmBody = await confirmResp.text();
-      console.log("[Confirmation trigger] Status:", confirmResp.status, "Body:", confirmBody);
     } catch (e) {
-      console.error("[Confirmation trigger] Error:", e.message);
+      console.error("[Confirmation trigger] Error:", (e as Error).message);
     }
 
-    return new Response(JSON.stringify({
-      ...session,
-      upi_id: centerUpi?.upi_id || null,
-      center_name: centerUpi?.name || null,
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (err) {
+    return new Response(
+      JSON.stringify({
+        ...session,
+        upi_id: centerUpi?.upi_id || null,
+        center_name: centerUpi?.name || null,
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
