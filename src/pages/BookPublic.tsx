@@ -197,12 +197,18 @@ export default function BookPublic() {
       const matchSearch = !search || c.name.toLowerCase().includes(search.toLowerCase()) ||
         c.address?.toLowerCase().includes(search.toLowerCase());
       const activeSport = sportFilter || routeSport;
-      const matchSport = !activeSport || c.resources.some((r) => r.type === activeSport);
+      // Safeguard c.resources with optional chaining or Array fallback
+      const resources = Array.isArray(c.resources) ? c.resources : [];
+      const matchSport = !activeSport || resources.some((r) => r.type === activeSport);
       const matchCity = !routeCity || c.address?.toLowerCase().includes(routeCity.toLowerCase());
       return matchSearch && matchSport && matchCity;
     }).map((c) => {
       const activeSport = sportFilter || routeSport;
-      return { ...c, resources: activeSport ? c.resources.filter((r) => r.type === activeSport) : c.resources };
+      const resources = Array.isArray(c.resources) ? c.resources : [];
+      return { 
+        ...c, 
+        resources: activeSport ? resources.filter((r) => r.type === activeSport) : resources 
+      };
     });
 
     // Haversine distance in km
@@ -219,9 +225,12 @@ export default function BookPublic() {
 
     // Sort: Active → Distance → Rating → Price
     return matched.sort((a, b) => {
+      const aResources = Array.isArray(a.resources) ? a.resources : [];
+      const bResources = Array.isArray(b.resources) ? b.resources : [];
+
       // 1. Active venues (with resources) first
-      const aActive = a.resources.length > 0 ? 1 : 0;
-      const bActive = b.resources.length > 0 ? 1 : 0;
+      const aActive = aResources.length > 0 ? 1 : 0;
+      const bActive = bResources.length > 0 ? 1 : 0;
       if (bActive !== aActive) return bActive - aActive;
 
       // 2. Closer venues first
@@ -235,7 +244,10 @@ export default function BookPublic() {
       if (bRating !== aRating) return bRating - aRating;
 
       // 4. Lower price first
-      const minRate = (c: typeof a) => c.resources.length ? Math.min(...c.resources.map(r => r.hourly_rate)) : Infinity;
+      const minRate = (c: typeof a) => {
+        const res = Array.isArray(c.resources) ? c.resources : [];
+        return res.length ? Math.min(...res.map(r => r.hourly_rate)) : Infinity;
+      };
       return minRate(a) - minRate(b);
     });
   }, [centers, search, sportFilter, routeSport, routeCity, userLocation]);
