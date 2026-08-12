@@ -64,6 +64,16 @@ export default function BookPublic() {
   const { param1, param2 } = useParams<{ param1?: string; param2?: string }>();
   const navigate = useNavigate();
 
+  const availableSports = useMemo(() => {
+    if (!centers) return [];
+    const types = new Set<string>();
+    centers.forEach(c => {
+      if (Array.isArray(c.resources)) {
+        c.resources.forEach(r => types.add(r.type));
+      }
+    });
+    return SPORT_TYPES.filter(s => types.has(s.value));
+  }, [centers]);
   // Determine if params are city or sport
   const routeCity = useMemo(() => {
     if (param1 && KNOWN_CITIES.includes(param1)) return param1;
