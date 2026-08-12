@@ -298,12 +298,12 @@ export default function BookPublic() {
   };
 
   const activeCenter = filtered.find((c) => c.id === selectedCenter);
-  const availableSports = useMemo(() => {
-    if (!centers) return [];
-    const types = new Set<string>();
-    centers.forEach(c => c.resources.forEach(r => types.add(r.type)));
-    return SPORT_TYPES.filter(s => types.has(s.value));
-  }, [centers]);
+ // const availableSports = useMemo(() => {
+  //  if (!centers) return [];
+  //  const types = new Set<string>();
+  //  centers.forEach(c => c.resources.forEach(r => types.add(r.type)));
+  //  return SPORT_TYPES.filter(s => types.has(s.value));
+//  }, [centers]);
 
   const dateChips = useMemo(() => {
     const today = startOfDay(new Date());
