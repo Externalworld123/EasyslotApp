@@ -13,7 +13,21 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import PublicSlotGrid from "./PublicSlotGrid";
+import { getStorageImageUrl } from "@/integrations/supabase/client";
 
+export default function VenueCard({ center }: { center: any }) {
+  return (
+    <img
+      src={getStorageImageUrl(center.image_url)}
+      alt={center.name}
+      onError={(e) => {
+        // Fallback to placeholder if network error or missing resource occurs
+        e.currentTarget.src = "/placeholder.png";
+      }}
+      className="w-full h-48 object-cover rounded-xl"
+    />
+  );
+}
 const SPORT_ICONS: Record<string, string> = {
   badminton: "🏸", tennis: "🎾", cricket: "🏏", football: "⚽",
   basketball: "🏀", swimming: "🏊", table_tennis: "🏓", squash: "🎯", volleyball: "🏐",
