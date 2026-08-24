@@ -2,7 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const allowedOrigins = [
   'https://easyslot-app.vercel.app',
-  'https://www.easyslot.co.in','easyslot.co.in'
+  'https://www.easyslot.co.in',
+  'easyslot.co.in'
   'http://localhost:5173'
 ];
 
